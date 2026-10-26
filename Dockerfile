@@ -14,6 +14,5 @@ ENV HOST=0.0.0.0
 ENV PORT=8080
 ENV DATABASE_URL="sqlite:///data/chronosync.db?mode=rwc"
 
-VOLUME ["/data"]
 EXPOSE 8080
 CMD ["chronosync-server"]
