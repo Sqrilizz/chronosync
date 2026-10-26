@@ -38,6 +38,16 @@ pub fn render_login_page(github_client_id: Option<&str>, error: Option<&str>) ->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>chronosync &mdash; self-hosted time tracker</title>
+    <meta name="theme-color" content="#8b5cf6">
+    <meta property="og:site_name" content="chronosync">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="chronosync &mdash; self-hosted developer time tracker">
+    <meta property="og:description" content="Minimalist developer activity &amp; time tracker with Bento Grid profiles, SQLite WAL, and dynamic SVG badges.">
+    <meta property="og:image" content="https://github.com/Sqrilizz.png">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="chronosync &mdash; self-hosted developer time tracker">
+    <meta name="twitter:description" content="Minimalist developer activity &amp; time tracker with Bento Grid profiles, SQLite WAL, and dynamic SVG badges.">
+    <meta name="twitter:image" content="https://github.com/Sqrilizz.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -264,6 +274,10 @@ pub fn render_dashboard(
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>chronosync &mdash; {username}</title>
+    <meta name="theme-color" content="#8b5cf6">
+    <meta property="og:site_name" content="chronosync">
+    <meta property="og:title" content="chronosync &mdash; @{username}">
+    <meta property="og:description" content="Developer time tracker &amp; Bento Grid activity dashboard.">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -654,6 +668,17 @@ pub fn render_profile_page(
 
     let user_profile_href = format!("{}/@{}", app_url, safe_username);
 
+    let og_description = if summary.total_seconds > 0 {
+        format!(
+            "Tracked {} ({}d) across {} active projects. Top language: {}.",
+            total_time_str, days_param, projects_count, top_language
+        )
+    } else {
+        "Developer profile on chronosync. Tracked coding activity, languages, and stats."
+            .to_string()
+    };
+    let safe_og_description = escape_html(&og_description);
+
     format!(
         r##"<!DOCTYPE html>
 <html lang="en">
@@ -661,6 +686,18 @@ pub fn render_profile_page(
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{display_name} (@{username}) &mdash; chronosync</title>
+    <meta name="theme-color" content="#8b5cf6">
+    <meta property="og:site_name" content="chronosync">
+    <meta property="og:type" content="profile">
+    <meta property="og:title" content="{display_name} (@{username}) &mdash; chronosync">
+    <meta property="og:description" content="{og_description}">
+    <meta property="og:url" content="{user_profile_href}">
+    <meta property="og:image" content="{avatar_url}">
+    <meta property="profile:username" content="{username}">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{display_name} (@{username}) &mdash; chronosync">
+    <meta name="twitter:description" content="{og_description}">
+    <meta name="twitter:image" content="{avatar_url}">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -856,7 +893,8 @@ pub fn render_profile_page(
         badge_url = badge_url,
         badge_markdown = badge_markdown,
         auth_header_right = auth_header_right,
-        user_profile_href = user_profile_href
+        user_profile_href = user_profile_href,
+        og_description = safe_og_description
     )
 }
 
@@ -880,6 +918,10 @@ pub fn render_profile_not_found(username: &str, app_url: &str, viewer: Option<&U
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@{username} not found &mdash; chronosync</title>
+    <meta name="theme-color" content="#71717a">
+    <meta property="og:site_name" content="chronosync">
+    <meta property="og:title" content="@{username} not found &mdash; chronosync">
+    <meta property="og:description" content="This user has not registered on chronosync yet.">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
