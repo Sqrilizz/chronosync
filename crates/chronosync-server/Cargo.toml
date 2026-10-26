@@ -1,0 +1,54 @@
+[package]
+name = "chronosync-server"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+name = "chronosync_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "chronosync-server"
+path = "src/main.rs"
+
+[dependencies]
+chronosync-core = { path = "../chronosync-core" }
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+reqwest.workspace = true
+uuid.workspace = true
+urlencoding = "2.1"
+
+axum = { version = "0.8", default-features = false, features = [
+    "tokio",
+    "http1",
+    "http2",
+    "json",
+    "matched-path",
+    "query",
+    "form",
+] }
+tower = "0.5"
+tower-http = { version = "0.6", features = [
+    "cors",
+    "trace",
+    "compression-gzip",
+    "decompression-gzip",
+] }
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio-rustls",
+    "sqlite",
+    "chrono",
+] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
