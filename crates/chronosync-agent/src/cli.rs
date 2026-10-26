@@ -30,6 +30,7 @@ pub enum Commands {
     Stats(StatsArgs),
     Ping,
     GitSync(GitSyncArgs),
+    Watch(WatchArgs),
 }
 
 #[derive(Args, Debug)]
@@ -95,4 +96,16 @@ pub struct GitSyncArgs {
 
     #[arg(short, long)]
     pub language: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct WatchArgs {
+    #[arg(short, long)]
+    pub path: Option<PathBuf>,
+
+    #[arg(short, long, default_value = "30")]
+    pub interval: u64,
+
+    #[arg(short, long)]
+    pub project: Option<String>,
 }

@@ -3,6 +3,8 @@ mod client;
 mod gitsync;
 
 use std::env;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use anyhow::{Context, Result, bail};
 use chronosync_core::{
@@ -10,13 +12,23 @@ use chronosync_core::{
 };
 use clap::Parser;
 
-use crate::cli::{Cli, Commands, GitSyncArgs, LogArgs, StatsArgs};
+use crate::cli::{Cli, Commands, GitSyncArgs, LogArgs, StatsArgs, WatchArgs};
 use crate::client::ChronoClient;
 use crate::gitsync::commit_and_push_activity;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+    let (cfg_url, cfg_key) = load_config();
+    if cli.server_url == "http://localhost:8080" {
+        if let Some(u) = cfg_url {
+            cli.server_url = u;
+        }
+    }
+    if cli.api_key.is_none() {
+        cli.api_key = cfg_key;
+    }
+
     let client = ChronoClient::new(cli.server_url, cli.api_key);
 
     match cli.command {
@@ -24,9 +36,37 @@ async fn main() -> Result<()> {
         Commands::Stats(args) => handle_stats(client, args).await?,
         Commands::Ping => handle_ping(client).await?,
         Commands::GitSync(args) => handle_git_sync(args).await?,
+        Commands::Watch(args) => handle_watch(client, args).await?,
     }
 
     Ok(())
+}
+
+fn load_config() -> (Option<String>, Option<String>) {
+    if let Ok(home) = env::var("HOME") {
+        let path = PathBuf::from(home)
+            .join(".config")
+            .join("chronosync")
+            .join("config.toml");
+        if let Ok(content) = std::fs::read_to_string(path) {
+            let mut server = None;
+            let mut key = None;
+            for line in content.lines() {
+                let line = line.trim();
+                if let Some((k, v)) = line.split_once('=') {
+                    let k = k.trim();
+                    let v = v.trim().trim_matches('"').trim_matches('\'').trim();
+                    if k == "server_url" && !v.is_empty() {
+                        server = Some(v.to_string());
+                    } else if k == "api_key" && !v.is_empty() {
+                        key = Some(v.to_string());
+                    }
+                }
+            }
+            return (server, key);
+        }
+    }
+    (None, None)
 }
 
 async fn handle_ping(client: ChronoClient) -> Result<()> {
@@ -54,6 +94,126 @@ async fn handle_git_sync(args: GitSyncArgs) -> Result<()> {
 
     println!("GitHub sync successful: {}", msg);
     Ok(())
+}
+
+async fn handle_watch(client: ChronoClient, args: WatchArgs) -> Result<()> {
+    let watch_dir = args
+        .path
+        .unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let watch_dir = std::fs::canonicalize(&watch_dir).unwrap_or(watch_dir);
+
+    let project = args.project.unwrap_or_else(|| {
+        watch_dir
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "default".to_string())
+    });
+
+    println!(
+        "Watching '{}' for project '{}' every {}s...",
+        watch_dir.display(),
+        project,
+        args.interval
+    );
+    println!("Press Ctrl+C to stop.");
+
+    let mut last_reported_time: Option<SystemTime> = None;
+
+    loop {
+        if let Some((file, mtime)) = find_newest_file(&watch_dir) {
+            let is_new = match last_reported_time {
+                Some(prev) => mtime > prev,
+                None => {
+                    if let Ok(elapsed) = mtime.elapsed() {
+                        elapsed.as_secs() < (args.interval * 3)
+                    } else {
+                        false
+                    }
+                }
+            };
+
+            if is_new {
+                last_reported_time = Some(mtime);
+                let rel_file = file
+                    .strip_prefix(&watch_dir)
+                    .unwrap_or(&file)
+                    .to_string_lossy()
+                    .to_string();
+                let language = detect_language(&rel_file);
+                let branch = detect_git_branch(&watch_dir);
+                let ts = current_timestamp();
+
+                let hb = Heartbeat {
+                    project: project.clone(),
+                    branch,
+                    language: language.clone(),
+                    file: Some(rel_file.clone()),
+                    editor: Some("watch".to_string()),
+                    timestamp: ts,
+                    is_write: true,
+                };
+
+                match client.send_heartbeat(&hb).await {
+                    Ok(_) => {
+                        let now_str = chrono::Local::now().format("%H:%M:%S");
+                        println!(
+                            "[{}] Logged: {} | {} | {}",
+                            now_str,
+                            project,
+                            language.as_deref().unwrap_or("general"),
+                            rel_file
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Failed to send heartbeat: {}", e);
+                    }
+                }
+            }
+        }
+
+        tokio::time::sleep(std::time::Duration::from_secs(args.interval)).await;
+    }
+}
+
+fn find_newest_file(dir: &Path) -> Option<(PathBuf, SystemTime)> {
+    let mut newest: Option<(PathBuf, SystemTime)> = None;
+    let mut stack = vec![dir.to_path_buf()];
+
+    while let Some(current) = stack.pop() {
+        if let Ok(entries) = std::fs::read_dir(&current) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if file_name.starts_with('.')
+                    || file_name == "target"
+                    || file_name == "node_modules"
+                    || file_name == "dist"
+                {
+                    continue;
+                }
+                if let Ok(ft) = entry.file_type() {
+                    if ft.is_dir() {
+                        stack.push(path);
+                    } else if ft.is_file() {
+                        if let Ok(meta) = entry.metadata() {
+                            if let Ok(mod_time) = meta.modified() {
+                                match &newest {
+                                    Some((_, best)) if mod_time > *best => {
+                                        newest = Some((path, mod_time));
+                                    }
+                                    None => {
+                                        newest = Some((path, mod_time));
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    newest
 }
 
 async fn handle_log(client: ChronoClient, args: LogArgs) -> Result<()> {

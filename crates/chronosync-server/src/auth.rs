@@ -48,6 +48,17 @@ pub async fn require_auth(
 }
 
 pub async fn extract_session_user(headers: &HeaderMap, db: &Database) -> Option<User> {
+    if let Some(auth_val) = headers.get(AUTHORIZATION).and_then(|h| h.to_str().ok()) {
+        let token = if let Some(t) = auth_val.strip_prefix("Bearer ") {
+            t.trim()
+        } else {
+            auth_val.trim()
+        };
+        if let Ok(Some(user)) = db.get_user_by_api_key(token).await {
+            return Some(user);
+        }
+    }
+
     let cookie_header = headers.get(COOKIE)?.to_str().ok()?;
     for part in cookie_header.split(';') {
         let part = part.trim();
